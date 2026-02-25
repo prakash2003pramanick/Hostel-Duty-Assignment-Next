@@ -46,13 +46,16 @@ export async function POST(request: NextRequest) {
     const totalDays =
       Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
 
+    const groupHostelType =
+      /^male$/i.test(gender) ? "BOYS" : /^female$/i.test(gender) ? "GIRLS" : gender;
+
     const groups = await Group.find({
-      type: new RegExp(`^${gender}$`, "i"),
+      type: new RegExp(`^${groupHostelType}$`, "i"),
       name: { $nin: excludedGroups },
     }).lean();
 
     const hostels = await Hostel.find({
-      type: new RegExp(`^${gender}$`, "i"),
+      type: new RegExp(`^${groupHostelType}$`, "i"),
       name: { $nin: excludedHostels },
     }).lean();
 
@@ -74,6 +77,11 @@ export async function POST(request: NextRequest) {
       { name: string; numberOfRooms: number; nextRoom: number }
     >();
 
+    const toNum = (v: unknown): number => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : 0;
+    };
+
     if (startFromWhereLeft) {
       const lastAssignments = await DutyAssignment.aggregate([
         { $match: { hostel: { $in: hostelNames } } },
@@ -82,13 +90,13 @@ export async function POST(request: NextRequest) {
       ]);
       const lastRoomMap = new Map<string, number>();
       for (const row of lastAssignments) {
-        lastRoomMap.set(row._id, row.lastEndRoom);
+        lastRoomMap.set(row._id, toNum(row.lastEndRoom));
       }
       for (const h of hostels) {
-        const lastRoom = lastRoomMap.get(h.name) || 0;
+        const lastRoom = lastRoomMap.get(h.name) ?? 0;
         hostelState.set(h.name, {
           name: h.name,
-          numberOfRooms: h.numberOfRooms,
+          numberOfRooms: Math.max(0, toNum(h.numberOfRooms)),
           nextRoom: lastRoom + 1,
         });
       }
@@ -96,7 +104,7 @@ export async function POST(request: NextRequest) {
       for (const h of hostels) {
         hostelState.set(h.name, {
           name: h.name,
-          numberOfRooms: h.numberOfRooms,
+          numberOfRooms: Math.max(0, toNum(h.numberOfRooms)),
           nextRoom: 1,
         });
       }
@@ -229,7 +237,10 @@ export async function POST(request: NextRequest) {
             if (remainingRooms <= 0) continue;
 
             const remainingDays = Math.max(1, totalDays - dayIndex);
-            const roomsToday = Math.ceil(remainingRooms / remainingDays);
+            const roomsToday = Math.max(
+              1,
+              Math.ceil(remainingRooms / remainingDays)
+            );
 
             const startRoom = hostel.nextRoom;
             const endRoom = Math.min(
@@ -298,20 +309,24 @@ export async function POST(request: NextRequest) {
                   }
                 : null;
 
-            bulkDutyOps.push({
-              insertOne: {
-                document: {
-                  date: new Date(currentDate),
-                  group: group.name,
-                  hostel: hostel.name,
-                  startRoom,
-                  endRoom,
-                  roomRange: `${startRoom}-${endRoom}`,
-                  faculty1: toFacultyDoc(bucket.faculties[0]),
-                  faculty2: toFacultyDoc(bucket.faculties[1]),
+            const safeStart = Math.floor(toNum(startRoom));
+            const safeEnd = Math.floor(toNum(endRoom));
+            if (Number.isFinite(safeStart) && Number.isFinite(safeEnd) && safeStart <= safeEnd) {
+              bulkDutyOps.push({
+                insertOne: {
+                  document: {
+                    date: new Date(currentDate),
+                    group: group.name,
+                    hostel: hostel.name,
+                    startRoom: safeStart,
+                    endRoom: safeEnd,
+                    roomRange: `${safeStart}-${safeEnd}`,
+                    faculty1: toFacultyDoc(bucket.faculties[0]),
+                    faculty2: toFacultyDoc(bucket.faculties[1]),
+                  },
                 },
-              },
-            });
+              });
+            }
           }
         }
 
