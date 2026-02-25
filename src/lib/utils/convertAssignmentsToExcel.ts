@@ -294,6 +294,7 @@ export const convertAssignmentsToExcel = async (
     }
 
     sheet.columns.forEach((col, i) => {
+      if (!col?.eachCell) return;
       let maxLen = 12;
       col.eachCell({ includeEmpty: true }, (cell) => {
         const v = cell.value ? String(cell.value) : "";
@@ -303,6 +304,7 @@ export const convertAssignmentsToExcel = async (
     });
   }
 
-  const buffer = (await workbook.xlsx.writeBuffer()) as Buffer;
+  const buf = await workbook.xlsx.writeBuffer();
+  const buffer = Buffer.isBuffer(buf) ? buf : Buffer.from(buf as ArrayBuffer);
   return { buffer, fileName };
 };

@@ -281,7 +281,8 @@ export default function SettingPage() {
     (h) => (h.type || "").toUpperCase() === (groupForm.type || "BOYS").toUpperCase()
   );
 
-  const preventScroll = (e: React.WheelEvent) => e.currentTarget.blur();
+  const preventScroll = (e: React.WheelEvent) =>
+    (e.currentTarget as HTMLElement).blur();
 
   if (loading) {
     return (

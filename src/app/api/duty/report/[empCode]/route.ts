@@ -30,10 +30,23 @@ export async function GET(
       );
     }
 
+    type FacultyDoc = {
+      _id: unknown;
+      name?: string;
+      title?: string;
+      employeeCode?: string;
+      designation?: string;
+      orgUnit?: string;
+      officialEmail?: string;
+      personalEmail?: string;
+      mobile?: string;
+    };
+    const f = faculty as FacultyDoc;
+    const facultyId = f._id;
     const dutyDocs = await DutyAssignment.find({
       $or: [
-        { "faculty1.id": faculty._id },
-        { "faculty2.id": faculty._id },
+        { "faculty1.id": facultyId },
+        { "faculty2.id": facultyId },
       ],
     })
       .sort({ date: 1 })
@@ -89,7 +102,7 @@ export async function GET(
 
       const facultyList = [f1, f2].filter(Boolean);
       const matchedIdx = facultyList.findIndex(
-        (f) => f && String((f as { _id: unknown })._id) === String(faculty._id)
+        (f) => f && String((f as { _id: unknown })._id) === String(facultyId)
       );
       const matched = matchedIdx >= 0 ? facultyList[matchedIdx] : null;
       const others = facultyList.filter((_, i) => i !== matchedIdx);
@@ -110,15 +123,15 @@ export async function GET(
     return NextResponse.json({
       message: "Faculty found",
       faculty: {
-        _id: faculty._id,
-        name: faculty.name,
-        title: faculty.title || "",
-        employeeCode: faculty.employeeCode,
-        designation: faculty.designation || "",
-        orgUnit: faculty.orgUnit || "",
-        officialEmail: faculty.officialEmail || "",
-        personalEmail: faculty.personalEmail || "",
-        mobile: faculty.mobile || "",
+        _id: facultyId,
+        name: f.name,
+        title: f.title || "",
+        employeeCode: f.employeeCode,
+        designation: f.designation || "",
+        orgUnit: f.orgUnit || "",
+        officialEmail: f.officialEmail || "",
+        personalEmail: f.personalEmail || "",
+        mobile: f.mobile || "",
       },
       history,
     });

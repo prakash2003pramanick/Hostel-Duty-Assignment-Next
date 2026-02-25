@@ -47,20 +47,22 @@ export async function POST(request: NextRequest) {
       }
 
       const existingGroup = await Group.findOne({ name }).lean();
+      type GroupDoc = { _id: unknown; hostelName?: string[] };
+      const eg = existingGroup as GroupDoc | null;
 
-      if (deleteFlag && existingGroup) {
-        const updatedHostels = (existingGroup.hostelName || []).filter(
+      if (deleteFlag && eg) {
+        const updatedHostels = (eg.hostelName || []).filter(
           (h: string) => !hostelName.includes(h)
         );
         if (updatedHostels.length === 0) {
           operations.push({
-            deleteOne: { filter: { _id: existingGroup._id } },
+            deleteOne: { filter: { _id: eg._id } },
           });
           responseGroups.push({ name, deleted: true });
         } else {
           operations.push({
             updateOne: {
-              filter: { _id: existingGroup._id },
+              filter: { _id: eg._id },
               update: { $set: { hostelName: updatedHostels } },
             },
           });
@@ -70,11 +72,11 @@ export async function POST(request: NextRequest) {
       }
 
       let finalHostelNames: string[];
-      if (replaceHostels || !existingGroup) {
+      if (replaceHostels || !eg) {
         finalHostelNames = hostelName;
       } else {
         finalHostelNames = Array.from(
-          new Set([...(existingGroup.hostelName || []), ...hostelName])
+          new Set([...(eg.hostelName || []), ...hostelName])
         );
       }
 

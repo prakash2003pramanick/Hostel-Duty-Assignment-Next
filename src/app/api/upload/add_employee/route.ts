@@ -57,31 +57,31 @@ const parseRowToFaculty = (row: RawRow) => {
 
   return {
     employeeCode: String(empCode).trim(),
-    title: get(["title", "Title"]) || "",
+    title: String(get(["title", "Title"]) || "").trim(),
     name: String(name).trim(),
-    designation: get(["designation", "Designation"]) || "",
-    orgUnit: get(["orgunit", "department", "OrgUnit", "Department"]) || "",
-    employeeGroup: get(["employeegroup", "type", "EmployeeGroup", "Type"]) || "",
-    gender: (get(["gender", "Gender"]) || "MALE").toString().trim(),
-    personalEmail:
+    designation: String(get(["designation", "Designation"]) || "").trim(),
+    orgUnit: String(get(["orgunit", "department", "OrgUnit", "Department"]) || "").trim(),
+    employeeGroup: String(get(["employeegroup", "type", "EmployeeGroup", "Type"]) || "").trim(),
+    gender: String(get(["gender", "Gender"]) || "MALE").trim(),
+    personalEmail: String(
       get([
         "personalemailid",
         "personalemail",
         "emailid",
         "PersonalEmailid",
         "EmailID",
-      ]) || "",
-    officialEmail:
+      ]) || ""
+    ).trim(),
+    officialEmail: String(
       get([
         "officialemailid",
         "officialemail",
         "OFFICIALEmailid",
         "OfficialEmail",
-      ]) || "",
+      ]) || ""
+    ).trim(),
     mobile: get(["mobile", "mobno", "Mobile", "MobNo"])
-      ? String(
-          get(["mobile", "mobno", "Mobile", "MobNo"])
-        ).trim()
+      ? String(get(["mobile", "mobno", "Mobile", "MobNo"])).trim()
       : "",
   };
 };
@@ -213,7 +213,7 @@ export async function POST(request: NextRequest) {
     const safeName = `processed_${Date.now()}.xlsx`;
     const encodedName = encodeURIComponent(safeName);
 
-    return new NextResponse(excelBuffer, {
+    return new NextResponse(new Uint8Array(excelBuffer), {
       status: 200,
       headers: {
         "Content-Disposition": `attachment; filename="${safeName}"; filename*=UTF-8''${encodedName}`,
