@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import mongoose from "mongoose";
+import mongoose, { Types } from "mongoose";
 import connectDB from "@/lib/db";
 import Faculty from "@/lib/models/Faculty";
 import Hostel from "@/lib/models/Hostel";
@@ -10,6 +10,7 @@ import {
   loadFacultyLastAssignmentData,
   mergeFacultyLastDutyIntoMaps,
   isWeekend,
+  type SelectFacultiesOpts,
 } from "@/lib/utils/facultySelection";
 
 export async function POST(request: NextRequest) {
@@ -86,20 +87,22 @@ export async function POST(request: NextRequest) {
       for (const h of hostels) {
         const lastRoom = lastRoomMap.get(h.name) || 0;
         hostelState.set(h.name, {
-          ...h,
+          name: h.name,
+          numberOfRooms: h.numberOfRooms,
           nextRoom: lastRoom + 1,
-        } as { name: string; numberOfRooms: number; nextRoom: number });
+        });
       }
     } else {
       for (const h of hostels) {
         hostelState.set(h.name, {
-          ...h,
+          name: h.name,
+          numberOfRooms: h.numberOfRooms,
           nextRoom: 1,
-        } as { name: string; numberOfRooms: number; nextRoom: number });
+        });
       }
     }
 
-    const facultyIds = faculties.map((f) => f._id);
+    const facultyIds = faculties.map((f) => f._id) as Types.ObjectId[];
     const {
       lastAssignmentMap,
       lastRoomRangeMap,
@@ -149,7 +152,7 @@ export async function POST(request: NextRequest) {
         if (!groupHostels.length) continue;
 
         const facultiesForDay = selectFacultiesForGroup({
-          group,
+          group: group as unknown as SelectFacultiesOpts["group"],
           date: currentDate,
           faculties,
           lastAssignmentMap,
@@ -166,7 +169,7 @@ export async function POST(request: NextRequest) {
         if (facultiesForDay.length < required) continue;
 
         facultiesForDay.forEach((f) =>
-          alreadyAssignedThisMonth.add(f._id.toString())
+          alreadyAssignedThisMonth.add(String(f._id))
         );
 
         const fCount = facultiesForDay.length;
@@ -267,7 +270,7 @@ export async function POST(request: NextRequest) {
                 roomRange,
               });
 
-              const fid = faculty._id.toString();
+              const fid = String(faculty._id);
               const dateMs = currentDate.getTime();
               facultyUpdates.set(fid, {
                 lastDuty: {

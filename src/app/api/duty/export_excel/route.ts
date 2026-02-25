@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     const safeName = (fileName || "Duty").replace(/[<>:"/\\|?*]/g, "_");
     const encodedName = encodeURIComponent(safeName + ".xlsx");
 
-    return new NextResponse(buffer, {
+    return new NextResponse(new Uint8Array(buffer), {
       status: 200,
       headers: {
         "Content-Disposition": `attachment; filename="${safeName}.xlsx"; filename*=UTF-8''${encodedName}`,

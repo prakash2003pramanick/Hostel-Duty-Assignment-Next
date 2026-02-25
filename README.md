@@ -69,3 +69,15 @@ src/
 npm run build
 npm start
 ```
+
+## Vercel Deployment
+
+If you get **NOT_FOUND** on Vercel:
+
+1. **Root Directory**: If your repo root is `HDA` (with subfolders like `hostel-duty-nextjs`), set **Root Directory** to `hostel-duty-nextjs` in Vercel Project Settings → General.
+
+2. **Environment Variables**: Add `MONGO_URI` in Vercel → Project Settings → Environment Variables (for Production, Preview, Development).
+
+3. **MongoDB Atlas**: Allow Vercel IPs or use `0.0.0.0/0` in Network Access (for development; restrict in production).
+
+4. **Build**: Ensure the build succeeds. Check Deployment logs for errors. Run `npm run build` locally first.

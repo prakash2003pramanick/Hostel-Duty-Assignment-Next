@@ -3,7 +3,7 @@
  * Handles LRU, school matching, weekend fairness, room range avoidance, and teaching/non-teaching pairing.
  */
 
-import type { Types } from "mongoose";
+import mongoose, { type Types } from "mongoose";
 
 // --- Teaching / Non-Teaching classification ---
 // TEACHING = teaching; anything else = non-teaching
@@ -71,11 +71,11 @@ const simulateRoomRangesForBucket = (
 
 // --- Check if faculty's last room range would conflict with any of the simulated ranges ---
 const hasSameRoomRangeAsLast = (
-  faculty: { _id: Types.ObjectId },
+  faculty: { _id: Types.ObjectId | { toString(): string } | unknown },
   simulatedRanges: string[] | string | null,
   lastRoomRangeMap: Map<string, string>
 ) => {
-  const lastRange = lastRoomRangeMap.get(faculty._id.toString());
+  const lastRange = lastRoomRangeMap.get(String(faculty._id));
   if (!lastRange) return false;
 
   const ranges = Array.isArray(simulatedRanges)
@@ -87,9 +87,16 @@ const hasSameRoomRangeAsLast = (
 };
 
 interface FacultyDoc {
-  _id: Types.ObjectId;
+  _id: Types.ObjectId | { toString(): string } | unknown;
   employeeGroup?: string;
   orgUnit?: string;
+  name?: string;
+  employeeCode?: string;
+  title?: string;
+  designation?: string;
+  gender?: string;
+  personalEmail?: string;
+  officialEmail?: string;
 }
 
 // --- Build faculty pools by school match and type ---
@@ -160,7 +167,7 @@ const pickOne = (opts: PickOneOpts): FacultyDoc | null => {
   const weekend = isWeekend(date);
 
   let eligible = pool.filter((f) => {
-    const fid = f._id.toString();
+    const fid = String(f._id);
     if (excludeIds.has(fid)) return false;
     if (isOnLeave(f as { leave?: { startDate: Date; endDate: Date }[] }, date))
       return false;
@@ -172,7 +179,7 @@ const pickOne = (opts: PickOneOpts): FacultyDoc | null => {
 
     if (weekend && preferWeekendFairness) {
       const someoneNeverDidWeekend = pool.some(
-        (p) => !lastWeekendMap.get(p._id.toString())
+        (p) => !lastWeekendMap.get(String(p._id))
       );
       if (someoneNeverDidWeekend && lastWeekendMap.get(fid)) return false;
     }
@@ -183,18 +190,18 @@ const pickOne = (opts: PickOneOpts): FacultyDoc | null => {
   const assignedThisMonth = alreadyAssignedThisMonth || new Set();
   if (!allowDuplicateEntries) {
     eligible = eligible.filter(
-      (f) => !assignedThisMonth.has(f._id.toString())
+      (f) => !assignedThisMonth.has(String(f._id))
     );
   }
   if (!eligible.length) return null;
 
   const allEligibleAssigned =
     allowDuplicateEntries &&
-    eligible.every((f) => assignedThisMonth.has(f._id.toString()));
+    eligible.every((f) => assignedThisMonth.has(String(f._id)));
 
   eligible.sort((a, b) => {
-    const aId = a._id.toString();
-    const bId = b._id.toString();
+    const aId = String(a._id);
+    const bId = String(b._id);
 
     if (!allEligibleAssigned) {
       const aAssigned = assignedThisMonth.has(aId);
@@ -260,7 +267,7 @@ export const selectFacultiesForGroup = (
   const selected: FacultyDoc[] = [];
   const addToExclude = (f: FacultyDoc | null) => {
     if (f) {
-      const fid = f._id.toString();
+      const fid = String(f._id);
       excludeIds.add(fid);
       alreadyAssignedToday.add(fid);
     }
@@ -491,11 +498,7 @@ interface DutyAssignmentDoc {
  */
 export const loadFacultyLastAssignmentData = async (
   facultyIds: Types.ObjectId[],
-  DutyAssignment: {
-    find: (q: object) => {
-      sort: (s: object) => { lean: () => Promise<DutyAssignmentDoc[]> };
-    };
-  }
+  DutyAssignment: mongoose.Model<unknown>
 ) => {
   const lastAssignmentMap = new Map<string, number>();
   const lastRoomRangeMap = new Map<string, string>();
@@ -505,7 +508,7 @@ export const loadFacultyLastAssignmentData = async (
     return { lastAssignmentMap, lastRoomRangeMap, lastWeekendMap };
 
   const ids = facultyIds.map((id) => id.toString());
-  const docs = await DutyAssignment.find({
+  const rawDocs = await DutyAssignment.find({
     $or: [
       { "faculty1.id": { $in: facultyIds } },
       { "faculty2.id": { $in: facultyIds } },
@@ -514,6 +517,7 @@ export const loadFacultyLastAssignmentData = async (
     .sort({ date: -1, createdAt: -1 })
     .lean();
 
+  const docs = rawDocs as unknown as DutyAssignmentDoc[];
   for (const d of docs) {
     const totalRooms = d.endRoom - d.startRoom + 1;
     const hasF2 = d.faculty2?.id;
@@ -552,7 +556,7 @@ export const loadFacultyLastAssignmentData = async (
 };
 
 interface FacultyWithLastDuty {
-  _id: Types.ObjectId;
+  _id: Types.ObjectId | { toString(): string } | unknown;
   lastDuty?: { date?: Date; roomAlloted?: string };
   lastWeekEndDuty?: { date?: Date };
 }
@@ -567,7 +571,7 @@ export const mergeFacultyLastDutyIntoMaps = (
   lastWeekendMap: Map<string, number>
 ) => {
   for (const f of faculties) {
-    const fid = f._id.toString();
+    const fid = String(f._id);
     if (f.lastDuty?.date) {
       const d = new Date(f.lastDuty.date).getTime();
       if (!lastAssignmentMap.has(fid) || lastAssignmentMap.get(fid)! < d)
