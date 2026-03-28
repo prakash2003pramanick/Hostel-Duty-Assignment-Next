@@ -16,6 +16,7 @@ export default function HomePage() {
   const [startFromWhereLeft, setStartFromWhereLeft] = useState<boolean>(false);
   const [allowDuplicateEntries, setAllowDuplicateEntries] =
     useState<boolean>(false);
+  const [reassign, setReassign] = useState<boolean>(false);
   const [excludedGroups, setExcludedGroups] = useState<string[]>([]);
   const [excludedSchools, setExcludedSchools] = useState<string[]>([]);
   const [excludedHostels, setExcludedHostels] = useState<string[]>([]);
@@ -87,6 +88,7 @@ export default function HomePage() {
       excludedHostels,
       startFromWhereLeft,
       allowDuplicateEntries,
+      reassign,
     };
 
     setGeneratingDuty(true);
@@ -234,6 +236,21 @@ export default function HomePage() {
           </select>
           <small className="muted">
             Allow same faculty to be assigned multiple times in a month
+          </small>
+        </div>
+
+        <div className="form-group half-width">
+          <label>Reassign</label>
+          <select
+            value={reassign ? "true" : "false"}
+            onChange={(e) => setReassign(e.target.value === "true")}
+            className="custom-select"
+          >
+            <option value="false">False</option>
+            <option value="true">True</option>
+          </select>
+          <small className="muted">
+            If false, keeps existing assignments and only fills gaps (no duplicate in month)
           </small>
         </div>
       </div>

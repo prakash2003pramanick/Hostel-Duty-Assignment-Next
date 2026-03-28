@@ -276,29 +276,63 @@ export const selectFacultiesForGroup = (
   if (n === 1) {
     const preferPool = weekend ? pools.nonTeaching : pools.teaching;
     const fallbackPool = weekend ? pools.teaching : pools.nonTeaching;
-    const pool = preferPool.length
-      ? preferPool
-      : fallbackPool.length
-        ? fallbackPool
-        : pools.all;
     const rangesForSingle = simulateRoomRangesForBucket(
       groupHostels,
       1,
       planningDays
     );
     const allRanges = rangesForSingle[0] || [];
-    const f = pickOne({
-      pool,
-      date,
-      excludeIds,
-      lastRoomRanges: lastRoomRangeMap,
-      simulatedRangesForPosition: allRanges.length ? allRanges : null,
-      lastAssignmentMap,
-      lastWeekendMap,
-      preferWeekendFairness: weekend,
-      alreadyAssignedThisMonth,
-      allowDuplicateEntries,
-    });
+
+    const pickWithFallback = (pool: FacultyDoc[]) => {
+      let f = pickOne({
+        pool,
+        date,
+        excludeIds,
+        lastRoomRanges: lastRoomRangeMap,
+        simulatedRangesForPosition: allRanges.length ? allRanges : null,
+        lastAssignmentMap,
+        lastWeekendMap,
+        preferWeekendFairness: weekend,
+        alreadyAssignedThisMonth,
+        allowDuplicateEntries,
+      });
+      if (!f && fallbackPool.length && pool !== fallbackPool) {
+        f = pickOne({
+          pool: fallbackPool,
+          date,
+          excludeIds,
+          lastRoomRanges: lastRoomRangeMap,
+          simulatedRangesForPosition: allRanges.length ? allRanges : null,
+          lastAssignmentMap,
+          lastWeekendMap,
+          preferWeekendFairness: weekend,
+          alreadyAssignedThisMonth,
+          allowDuplicateEntries,
+        });
+      }
+      if (!f && pool !== pools.all) {
+        f = pickOne({
+          pool: pools.all,
+          date,
+          excludeIds,
+          lastRoomRanges: lastRoomRangeMap,
+          simulatedRangesForPosition: allRanges.length ? allRanges : null,
+          lastAssignmentMap,
+          lastWeekendMap,
+          preferWeekendFairness: weekend,
+          alreadyAssignedThisMonth,
+          allowDuplicateEntries,
+        });
+      }
+      return f;
+    };
+
+    const pool = preferPool.length
+      ? preferPool
+      : fallbackPool.length
+        ? fallbackPool
+        : pools.all;
+    const f = pickWithFallback(pool);
     if (f) {
       addToExclude(f);
       selected.push(f);
