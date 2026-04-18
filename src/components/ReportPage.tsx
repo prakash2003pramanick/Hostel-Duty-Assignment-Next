@@ -31,6 +31,54 @@ export default function ReportPage() {
   const [matchedFaculty, setMatchedFaculty] = useState<FacultyInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [downloadingAll, setDownloadingAll] = useState(false);
+  const [downloadingEmployee, setDownloadingEmployee] = useState(false);
+
+  const downloadReportExcel = async (mode: "all" | "employee", code?: string) => {
+    const setBusy = mode === "all" ? setDownloadingAll : setDownloadingEmployee;
+    setBusy(true);
+    try {
+      const res = await fetch("/api/duty/report_excel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          mode === "employee"
+            ? { mode: "employee", employeeCode: code ?? "" }
+            : { mode: "all" }
+        ),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || err.error || "Download failed");
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const contentDisposition = res.headers.get("Content-Disposition");
+      let filename =
+        mode === "all"
+          ? "FacultyDutyReport_all.xlsx"
+          : `FacultyDutyReport_${(code || "").trim()}.xlsx`;
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename="?([^";\n]+)"?/);
+        if (match) filename = match[1].trim();
+      }
+
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      alert(err instanceof Error ? err.message : "Download failed");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const handleSearch = async () => {
     const code = empCode.trim();
@@ -100,6 +148,31 @@ export default function ReportPage() {
         >
           {loading ? "Searching..." : "Search"}
         </button>
+      </div>
+
+      <div className="report-download-row">
+        <button
+          type="button"
+          className="btn btn-secondary"
+          disabled={downloadingAll}
+          onClick={() => downloadReportExcel("all")}
+        >
+          {downloadingAll ? "Preparing…" : "Download all faculty (Excel)"}
+        </button>
+        {matchedFaculty?.employeeCode ? (
+          <button
+            type="button"
+            className="btn"
+            disabled={downloadingEmployee}
+            onClick={() =>
+              downloadReportExcel("employee", matchedFaculty.employeeCode)
+            }
+          >
+            {downloadingEmployee
+              ? "Preparing…"
+              : "Download this employee (Excel)"}
+          </button>
+        ) : null}
       </div>
 
       {error && <div className="error">{error}</div>}

@@ -225,6 +225,14 @@ input:focus {
   flex: 1;
 }
 
+.report-download-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
 .error {
   color: #b91c1c;
   margin: 8px 0 12px;
