@@ -86,6 +86,7 @@ interface FacultyAssignment {
   gender?: string;
   personalEmail?: string;
   officialEmail?: string;
+  mobile?: string;
   hostel?: string;
   roomRange?: string;
 }
@@ -114,6 +115,7 @@ interface RowData {
   gender?: string;
   personalEmail?: string;
   officialEmail?: string;
+  mobile?: string;
 }
 
 /**
@@ -185,6 +187,7 @@ const buildRowsForGroup = (group: GroupAssignments): RowData[] => {
             gender: f.gender || "",
             personalEmail: f.personalEmail || "",
             officialEmail: f.officialEmail || "",
+            mobile: f.mobile || "",
           });
           isFirstRowForRoom = false;
           isFirstRowForDate = false;
@@ -242,6 +245,7 @@ export const convertAssignmentsToExcel = async (
     "Gender",
     "Personal Email",
     "Official Email",
+    "Mobile",
   ];
 
   for (const group of groups) {
@@ -281,6 +285,7 @@ export const convertAssignmentsToExcel = async (
         r.gender,
         r.personalEmail,
         r.officialEmail,
+        r.mobile,
       ]);
       row.eachCell((cell) => {
         cell.alignment = { vertical: "middle" };

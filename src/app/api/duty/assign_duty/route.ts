@@ -234,6 +234,7 @@ export async function POST(request: NextRequest) {
           gender?: string;
           personalEmail?: string;
           officialEmail?: string;
+          mobile?: string;
         }>;
 
         if (existing && existing.facultyIds.size > 0) {
@@ -252,6 +253,7 @@ export async function POST(request: NextRequest) {
             gender?: string;
             personalEmail?: string;
             officialEmail?: string;
+            mobile?: string;
           }> = [];
           const seen = new Set<string>();
           for (const a of existing.assignments) {
@@ -274,6 +276,7 @@ export async function POST(request: NextRequest) {
                   gender: f.gender,
                   personalEmail: f.personalEmail,
                   officialEmail: f.officialEmail,
+                  mobile: f.mobile,
                 });
             }
           }
@@ -325,6 +328,7 @@ export async function POST(request: NextRequest) {
             gender?: string;
             personalEmail?: string;
             officialEmail?: string;
+            mobile?: string;
             hostel: string;
             roomRange: string;
           }[],
@@ -370,6 +374,7 @@ export async function POST(request: NextRequest) {
                 gender: faculty.gender,
                 personalEmail: faculty.personalEmail,
                 officialEmail: faculty.officialEmail,
+                mobile: faculty.mobile,
                 hostel: a.hostel,
                 roomRange,
               });
@@ -448,6 +453,7 @@ export async function POST(request: NextRequest) {
                   gender: faculty.gender,
                   personalEmail: faculty.personalEmail,
                   officialEmail: faculty.officialEmail,
+                  mobile: faculty.mobile,
                   hostel: hostel.name,
                   roomRange,
                 });
