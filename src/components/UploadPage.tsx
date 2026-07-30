@@ -12,6 +12,16 @@ export default function UploadPage() {
   };
 
   const handleUploadExcel = async () => {
+    if (!action) {
+      alert("Please select an action.");
+      return;
+    }
+
+    if (action === "leave") {
+      alert("Leave upload is not available yet.");
+      return;
+    }
+
     if (!file) {
       alert("Please upload an Excel file.");
       return;
@@ -21,7 +31,11 @@ export default function UploadPage() {
     formData.append("excelFile", file);
 
     try {
-      const res = await fetch("/api/upload/add_employee", {
+      const endpoint =
+        action === "delete"
+          ? "/api/upload/delete_employee"
+          : "/api/upload/add_employee";
+      const res = await fetch(endpoint, {
         method: "POST",
         body: formData,
       });
@@ -53,13 +67,25 @@ export default function UploadPage() {
         link.click();
         link.remove();
         window.URL.revokeObjectURL(url);
-        alert("Faculty data uploaded successfully! Download your processed file.");
+        alert(
+          action === "delete"
+            ? "Employee deletion completed. Download the status file."
+            : "Faculty data uploaded successfully! Download your processed file."
+        );
       } else {
-        alert("Faculty data uploaded successfully!");
+        alert(
+          action === "delete"
+            ? "Employee deletion completed."
+            : "Faculty data uploaded successfully!"
+        );
       }
     } catch (err) {
       console.error(err);
-      alert("Error uploading file.");
+      alert(
+        action === "delete"
+          ? "Error deleting employees."
+          : "Error uploading file."
+      );
     }
   };
 
@@ -119,7 +145,7 @@ export default function UploadPage() {
 
       <div className="button-group">
         <button onClick={handleUploadExcel} className="upload-btn">
-          Upload Faculty Data
+          {action === "delete" ? "Delete Employees" : "Upload Faculty Data"}
         </button>
       </div>
     </div>
