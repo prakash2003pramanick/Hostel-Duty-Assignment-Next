@@ -517,9 +517,14 @@ export const selectFacultiesForGroup = (
   return [];
 };
 
+export interface FacultyRef {
+  _id: Types.ObjectId | { toString(): string } | unknown;
+  employeeCode?: string;
+}
+
 interface DutyAssignmentDoc {
-  faculty1?: { id?: Types.ObjectId };
-  faculty2?: { id?: Types.ObjectId };
+  faculty1?: { id?: Types.ObjectId; employeeCode?: string };
+  faculty2?: { id?: Types.ObjectId; employeeCode?: string };
   date: Date;
   startRoom: number;
   endRoom: number;
@@ -531,30 +536,59 @@ interface DutyAssignmentDoc {
  * Returns { lastAssignmentMap, lastRoomRangeMap, lastWeekendMap }.
  */
 export const loadFacultyLastAssignmentData = async (
-  facultyIds: Types.ObjectId[],
+  facultyList: (FacultyRef | Types.ObjectId)[],
   DutyAssignment: mongoose.Model<unknown>
 ) => {
   const lastAssignmentMap = new Map<string, number>();
   const lastRoomRangeMap = new Map<string, string>();
   const lastWeekendMap = new Map<string, number>();
 
-  if (!facultyIds.length)
+  if (!facultyList.length)
     return { lastAssignmentMap, lastRoomRangeMap, lastWeekendMap };
 
-  const ids = facultyIds.map((id) => id.toString());
-  const rawDocs = await DutyAssignment.find({
-    $or: [
-      { "faculty1.id": { $in: facultyIds } },
-      { "faculty2.id": { $in: facultyIds } },
-    ],
-  })
-    .sort({ date: -1, createdAt: -1 })
-    .lean();
+  const idToFid = new Map<string, string>();
+  const codeToFid = new Map<string, string>();
+  const facultyIds: Types.ObjectId[] = [];
+  const employeeCodes: string[] = [];
+
+  for (const item of facultyList) {
+    if (item && typeof item === "object" && "_id" in item) {
+      const f = item as FacultyRef;
+      const fid = String(f._id);
+      idToFid.set(fid, fid);
+      facultyIds.push(f._id as Types.ObjectId);
+      if (f.employeeCode) {
+        const code = String(f.employeeCode).trim();
+        codeToFid.set(code, fid);
+        employeeCodes.push(code);
+      }
+    } else if (item) {
+      const fid = String(item);
+      idToFid.set(fid, fid);
+      facultyIds.push(item as Types.ObjectId);
+    }
+  }
+
+  const orConditions: Record<string, unknown>[] = [];
+  if (employeeCodes.length) {
+    orConditions.push({ "faculty1.employeeCode": { $in: employeeCodes } });
+    orConditions.push({ "faculty2.employeeCode": { $in: employeeCodes } });
+  }
+  if (facultyIds.length) {
+    orConditions.push({ "faculty1.id": { $in: facultyIds } });
+    orConditions.push({ "faculty2.id": { $in: facultyIds } });
+  }
+
+  const rawDocs = orConditions.length
+    ? await DutyAssignment.find({ $or: orConditions })
+        .sort({ date: -1, createdAt: -1 })
+        .lean()
+    : [];
 
   const docs = rawDocs as unknown as DutyAssignmentDoc[];
   for (const d of docs) {
     const totalRooms = d.endRoom - d.startRoom + 1;
-    const hasF2 = d.faculty2?.id;
+    const hasF2 = d.faculty2?.id || d.faculty2?.employeeCode;
     const numFaculty = hasF2 ? 2 : 1;
     const split = Math.ceil(totalRooms / numFaculty);
     const f1Range = `${d.startRoom}-${Math.min(
@@ -569,20 +603,35 @@ export const loadFacultyLastAssignmentData = async (
     const weekend =
       new Date(d.date).getDay() === 0 || new Date(d.date).getDay() === 6;
 
-    if (d.faculty1?.id && ids.includes(d.faculty1.id.toString())) {
-      const fid = d.faculty1.id.toString();
-      if (!lastAssignmentMap.has(fid)) lastAssignmentMap.set(fid, dateMs);
-      if (!lastRoomRangeMap.has(fid)) lastRoomRangeMap.set(fid, f1Range);
-      if (weekend && !lastWeekendMap.has(fid))
-        lastWeekendMap.set(fid, dateMs);
+    // Check faculty 1 match
+    let fid1: string | undefined;
+    if (d.faculty1?.employeeCode && codeToFid.has(String(d.faculty1.employeeCode).trim())) {
+      fid1 = codeToFid.get(String(d.faculty1.employeeCode).trim());
+    } else if (d.faculty1?.id && idToFid.has(d.faculty1.id.toString())) {
+      fid1 = idToFid.get(d.faculty1.id.toString());
     }
-    if (d.faculty2?.id && ids.includes(d.faculty2.id.toString())) {
-      const fid = d.faculty2.id.toString();
-      if (!lastAssignmentMap.has(fid)) lastAssignmentMap.set(fid, dateMs);
-      if (f2Range && !lastRoomRangeMap.has(fid))
-        lastRoomRangeMap.set(fid, f2Range);
-      if (weekend && !lastWeekendMap.has(fid))
-        lastWeekendMap.set(fid, dateMs);
+
+    if (fid1) {
+      if (!lastAssignmentMap.has(fid1)) lastAssignmentMap.set(fid1, dateMs);
+      if (!lastRoomRangeMap.has(fid1)) lastRoomRangeMap.set(fid1, f1Range);
+      if (weekend && !lastWeekendMap.has(fid1))
+        lastWeekendMap.set(fid1, dateMs);
+    }
+
+    // Check faculty 2 match
+    let fid2: string | undefined;
+    if (d.faculty2?.employeeCode && codeToFid.has(String(d.faculty2.employeeCode).trim())) {
+      fid2 = codeToFid.get(String(d.faculty2.employeeCode).trim());
+    } else if (d.faculty2?.id && idToFid.has(d.faculty2.id.toString())) {
+      fid2 = idToFid.get(d.faculty2.id.toString());
+    }
+
+    if (fid2) {
+      if (!lastAssignmentMap.has(fid2)) lastAssignmentMap.set(fid2, dateMs);
+      if (f2Range && !lastRoomRangeMap.has(fid2))
+        lastRoomRangeMap.set(fid2, f2Range);
+      if (weekend && !lastWeekendMap.has(fid2))
+        lastWeekendMap.set(fid2, dateMs);
     }
   }
 

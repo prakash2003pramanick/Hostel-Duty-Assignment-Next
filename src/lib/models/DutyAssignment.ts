@@ -10,11 +10,13 @@ const DutySchema = new mongoose.Schema(
     roomRange: { type: String, required: true },
     faculty1: {
       id: { type: mongoose.Schema.Types.ObjectId, ref: "Faculty" },
+      employeeCode: { type: String, index: true },
       name: String,
       employeeGroup: String,
     },
     faculty2: {
       id: { type: mongoose.Schema.Types.ObjectId, ref: "Faculty" },
+      employeeCode: { type: String, index: true },
       name: String,
       employeeGroup: String,
     },

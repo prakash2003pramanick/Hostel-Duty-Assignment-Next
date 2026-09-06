@@ -168,12 +168,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const facultyIds = faculties.map((f) => f._id) as Types.ObjectId[];
     const {
       lastAssignmentMap,
       lastRoomRangeMap,
       lastWeekendMap,
-    } = await loadFacultyLastAssignmentData(facultyIds, DutyAssignment);
+    } = await loadFacultyLastAssignmentData(faculties, DutyAssignment);
     mergeFacultyLastDutyIntoMaps(
       faculties,
       lastAssignmentMap,
@@ -481,6 +480,7 @@ export async function POST(request: NextRequest) {
                 f
                   ? {
                       id: f._id,
+                      employeeCode: f.employeeCode,
                       name: f.name,
                       employeeGroup: f.employeeGroup,
                     }
