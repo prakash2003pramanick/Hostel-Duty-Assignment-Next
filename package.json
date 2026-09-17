@@ -9,7 +9,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "import-counts": "node --env-file=.env.local scripts/import-duty-counts.js"
   },
   "dependencies": {
     "date-fns": "^4.1.0",
