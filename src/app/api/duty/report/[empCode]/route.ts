@@ -45,6 +45,8 @@ export async function GET(
     const facultyId = f._id;
     const dutyDocs = await DutyAssignment.find({
       $or: [
+        { "faculty1.employeeCode": empCode },
+        { "faculty2.employeeCode": empCode },
         { "faculty1.id": facultyId },
         { "faculty2.id": facultyId },
       ],
@@ -54,55 +56,85 @@ export async function GET(
       .populate("faculty2.id", "name title employeeCode designation orgUnit officialEmail personalEmail mobile")
       .lean();
 
+    const buildFacultyInfo = (
+      rawFaculty:
+        | {
+            id?: Record<string, unknown> | unknown;
+            employeeCode?: string;
+            name?: string;
+            employeeGroup?: string;
+          }
+        | undefined
+    ) => {
+      if (!rawFaculty) return null;
+      const populated =
+        rawFaculty.id && typeof rawFaculty.id === "object"
+          ? (rawFaculty.id as Record<string, unknown>)
+          : null;
+
+      if (populated) {
+        return {
+          _id: populated._id,
+          name: (populated.name as string) || rawFaculty.name || "",
+          title: (populated.title as string) || "",
+          employeeCode:
+            (populated.employeeCode as string) ||
+            rawFaculty.employeeCode ||
+            "",
+          designation: (populated.designation as string) || "",
+          orgUnit: (populated.orgUnit as string) || "",
+          officialEmail: (populated.officialEmail as string) || "",
+          personalEmail: (populated.personalEmail as string) || "",
+          mobile: (populated.mobile as string) || "",
+        };
+      }
+
+      if (rawFaculty.name || rawFaculty.employeeCode) {
+        return {
+          _id: rawFaculty.id ?? null,
+          name: rawFaculty.name || "",
+          title: "",
+          employeeCode: rawFaculty.employeeCode || "",
+          designation: "",
+          orgUnit: "",
+          officialEmail: "",
+          personalEmail: "",
+          mobile: "",
+        };
+      }
+
+      return null;
+    };
+
     const history = dutyDocs.map((doc: Record<string, unknown>) => {
-      const f1 = (doc.faculty1 as { id?: Record<string, unknown> })?.id
-        ? {
-            _id: (doc.faculty1 as { id: { _id: unknown } }).id._id,
-            name: (doc.faculty1 as { id: { name?: string } }).id.name,
-            title: (doc.faculty1 as { id: { title?: string } }).id.title || "",
-            employeeCode: (doc.faculty1 as { id: { employeeCode?: string } })
-              .id.employeeCode,
-            designation:
-              (doc.faculty1 as { id: { designation?: string } }).id
-                .designation || "",
-            orgUnit:
-              (doc.faculty1 as { id: { orgUnit?: string } }).id.orgUnit || "",
-            officialEmail:
-              (doc.faculty1 as { id: { officialEmail?: string } }).id
-                .officialEmail || "",
-            personalEmail:
-              (doc.faculty1 as { id: { personalEmail?: string } }).id
-                .personalEmail || "",
-            mobile:
-              (doc.faculty1 as { id: { mobile?: string } }).id.mobile || "",
-          }
-        : null;
-      const f2 = (doc.faculty2 as { id?: Record<string, unknown> })?.id
-        ? {
-            _id: (doc.faculty2 as { id: { _id: unknown } }).id._id,
-            name: (doc.faculty2 as { id: { name?: string } }).id.name,
-            title: (doc.faculty2 as { id: { title?: string } }).id.title || "",
-            employeeCode: (doc.faculty2 as { id: { employeeCode?: string } })
-              .id.employeeCode,
-            designation:
-              (doc.faculty2 as { id: { designation?: string } }).id
-                .designation || "",
-            orgUnit:
-              (doc.faculty2 as { id: { orgUnit?: string } }).id.orgUnit || "",
-            officialEmail:
-              (doc.faculty2 as { id: { officialEmail?: string } }).id
-                .officialEmail || "",
-            personalEmail:
-              (doc.faculty2 as { id: { personalEmail?: string } }).id
-                .personalEmail || "",
-            mobile:
-              (doc.faculty2 as { id: { mobile?: string } }).id.mobile || "",
-          }
-        : null;
+      const f1 = buildFacultyInfo(
+        doc.faculty1 as
+          | {
+              id?: Record<string, unknown> | unknown;
+              employeeCode?: string;
+              name?: string;
+              employeeGroup?: string;
+            }
+          | undefined
+      );
+      const f2 = buildFacultyInfo(
+        doc.faculty2 as
+          | {
+              id?: Record<string, unknown> | unknown;
+              employeeCode?: string;
+              name?: string;
+              employeeGroup?: string;
+            }
+          | undefined
+      );
 
       const facultyList = [f1, f2].filter(Boolean);
       const matchedIdx = facultyList.findIndex(
-        (f) => f && String((f as { _id: unknown })._id) === String(facultyId)
+        (f) =>
+          f &&
+          (String(f.employeeCode || "").trim().toLowerCase() ===
+            empCode.toLowerCase() ||
+            (facultyId && String(f._id) === String(facultyId)))
       );
       const matched = matchedIdx >= 0 ? facultyList[matchedIdx] : null;
       const others = facultyList.filter((_, i) => i !== matchedIdx);

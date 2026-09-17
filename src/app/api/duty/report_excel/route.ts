@@ -67,44 +67,69 @@ function facultyToRow(f: LeanFaculty, duties: DutySlot[]): FacultyReportRow {
   };
 }
 
-async function dutySlotsByFacultyId(): Promise<Map<string, DutySlot[]>> {
+async function loadFacultyDutySlots(): Promise<{
+  byCode: Map<string, DutySlot[]>;
+  byId: Map<string, DutySlot[]>;
+}> {
   const duties = await DutyAssignment.find({})
-    .select("date hostel roomRange faculty1.id faculty2.id")
+    .select("date hostel roomRange faculty1 faculty2")
     .sort({ date: 1 })
     .lean();
 
-  const rawMap = new Map<string, RawDutyPart[]>();
+  const rawMapCode = new Map<string, RawDutyPart[]>();
+  const rawMapId = new Map<string, RawDutyPart[]>();
 
   for (const d of duties) {
     const doc = d as unknown as {
       date: Date;
       hostel?: string;
       roomRange?: string;
-      faculty1?: { id?: unknown };
-      faculty2?: { id?: unknown };
+      faculty1?: { id?: unknown; employeeCode?: string };
+      faculty2?: { id?: unknown; employeeCode?: string };
     };
     const part: RawDutyPart = {
       date: new Date(doc.date),
       hostel: String(doc.hostel ?? ""),
       roomRange: String(doc.roomRange ?? ""),
     };
+
+    const c1 = doc.faculty1?.employeeCode
+      ? String(doc.faculty1.employeeCode).trim()
+      : "";
+    const c2 = doc.faculty2?.employeeCode
+      ? String(doc.faculty2.employeeCode).trim()
+      : "";
+    if (c1) {
+      if (!rawMapCode.has(c1)) rawMapCode.set(c1, []);
+      rawMapCode.get(c1)!.push(part);
+    }
+    if (c2 && c2 !== c1) {
+      if (!rawMapCode.has(c2)) rawMapCode.set(c2, []);
+      rawMapCode.get(c2)!.push(part);
+    }
+
     const id1 = doc.faculty1?.id != null ? String(doc.faculty1.id) : "";
     const id2 = doc.faculty2?.id != null ? String(doc.faculty2.id) : "";
     if (id1) {
-      if (!rawMap.has(id1)) rawMap.set(id1, []);
-      rawMap.get(id1)!.push(part);
+      if (!rawMapId.has(id1)) rawMapId.set(id1, []);
+      rawMapId.get(id1)!.push(part);
     }
     if (id2 && id2 !== id1) {
-      if (!rawMap.has(id2)) rawMap.set(id2, []);
-      rawMap.get(id2)!.push(part);
+      if (!rawMapId.has(id2)) rawMapId.set(id2, []);
+      rawMapId.get(id2)!.push(part);
     }
   }
 
-  const map = new Map<string, DutySlot[]>();
-  for (const [id, raw] of rawMap) {
-    map.set(id, aggregateDutiesByDay(raw));
+  const byCode = new Map<string, DutySlot[]>();
+  for (const [code, raw] of rawMapCode) {
+    byCode.set(code, aggregateDutiesByDay(raw));
   }
-  return map;
+  const byId = new Map<string, DutySlot[]>();
+  for (const [id, raw] of rawMapId) {
+    byId.set(id, aggregateDutiesByDay(raw));
+  }
+
+  return { byCode, byId };
 }
 
 export async function POST(request: NextRequest) {
@@ -123,7 +148,15 @@ export async function POST(request: NextRequest) {
 
     await connectDB();
 
-    const byFaculty = await dutySlotsByFacultyId();
+    const { byCode, byId } = await loadFacultyDutySlots();
+
+    const getDutiesForFaculty = (f: LeanFaculty): DutySlot[] => {
+      const code = f.employeeCode ? String(f.employeeCode).trim() : "";
+      const id = f._id != null ? String(f._id) : "";
+      if (code && byCode.has(code)) return byCode.get(code)!;
+      if (id && byId.has(id)) return byId.get(id)!;
+      return [];
+    };
 
     let rows: FacultyReportRow[] = [];
     let fileNameBase: string;
@@ -141,8 +174,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const id = String(faculty._id);
-      const duties = byFaculty.get(id) ?? [];
+      const duties = getDutiesForFaculty(faculty);
       rows = [facultyToRow(faculty, duties)];
       fileNameBase = `FacultyDutyReport_${employeeCode}`;
       sheetTitle = `Faculty duty report — ${employeeCode}`;
@@ -152,7 +184,7 @@ export async function POST(request: NextRequest) {
         .lean<LeanFaculty[]>();
 
       rows = faculties.map((f) =>
-        facultyToRow(f, byFaculty.get(String(f._id)) ?? [])
+        facultyToRow(f, getDutiesForFaculty(f))
       );
       fileNameBase = "FacultyDutyReport_all";
       sheetTitle = "Faculty duty report — all";
