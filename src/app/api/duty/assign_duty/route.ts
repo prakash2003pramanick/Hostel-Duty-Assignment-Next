@@ -5,9 +5,11 @@ import Faculty from "@/lib/models/Faculty";
 import Hostel from "@/lib/models/Hostel";
 import Group from "@/lib/models/Group";
 import DutyAssignment from "@/lib/models/DutyAssignment";
+import Count from "@/lib/models/Count";
 import {
   selectFacultiesForGroup,
   loadFacultyLastAssignmentData,
+  loadFacultyCountData,
   mergeFacultyLastDutyIntoMaps,
   isWeekend,
   type SelectFacultiesOpts,
@@ -180,6 +182,12 @@ export async function POST(request: NextRequest) {
       lastWeekendMap
     );
 
+    const {
+      weekendCountMap,
+      weekdaysCountMap,
+      totalCountMap,
+    } = await loadFacultyCountData(faculties, Count);
+
     const response: { groupName: string; assignments: unknown[] }[] = [];
     const bulkDutyOps: unknown[] = [];
     const facultyUpdates = new Map<
@@ -193,6 +201,10 @@ export async function POST(request: NextRequest) {
         };
         lastWeekEndDuty?: { date: Date };
       }
+    >();
+    const countIncrements = new Map<
+      string,
+      { weekdaysCount: number; weekendCount: number; total: number }
     >();
 
     session.startTransaction();
@@ -288,6 +300,9 @@ export async function POST(request: NextRequest) {
             lastAssignmentMap,
             lastRoomRangeMap,
             lastWeekendMap,
+            weekendCountMap,
+            weekdaysCountMap,
+            totalCountMap,
             groupHostels,
             planningDays: Math.max(1, totalDays - dayIndex),
             alreadyAssignedToday,
@@ -459,6 +474,8 @@ export async function POST(request: NextRequest) {
 
                 const fid = String(faculty._id);
                 const dateMs = currentDate.getTime();
+                const weekend = isWeekend(currentDate);
+
                 facultyUpdates.set(fid, {
                   lastDuty: {
                     date: new Date(currentDate),
@@ -466,14 +483,35 @@ export async function POST(request: NextRequest) {
                     roomAlloted: roomRange,
                     numberOfRooms: fEnd - fStart + 1,
                   },
-                  ...(isWeekend(currentDate) && {
+                  ...(weekend && {
                     lastWeekEndDuty: { date: new Date(currentDate) },
                   }),
                 });
                 lastAssignmentMap.set(fid, dateMs);
                 lastRoomRangeMap.set(fid, roomRange);
-                if (isWeekend(currentDate))
+                if (weekend) {
                   lastWeekendMap.set(fid, dateMs);
+                  weekendCountMap.set(fid, (weekendCountMap.get(fid) || 0) + 1);
+                } else {
+                  weekdaysCountMap.set(fid, (weekdaysCountMap.get(fid) || 0) + 1);
+                }
+                totalCountMap.set(fid, (totalCountMap.get(fid) || 0) + 1);
+
+                const empCode = String(faculty.employeeCode || "").trim();
+                if (empCode) {
+                  const currentInc = countIncrements.get(empCode) || {
+                    weekdaysCount: 0,
+                    weekendCount: 0,
+                    total: 0,
+                  };
+                  if (weekend) {
+                    currentInc.weekendCount += 1;
+                  } else {
+                    currentInc.weekdaysCount += 1;
+                  }
+                  currentInc.total += 1;
+                  countIncrements.set(empCode, currentInc);
+                }
               });
 
               const toFacultyDoc = (f: (typeof bucket.faculties)[0] | null) =>
@@ -531,6 +569,33 @@ export async function POST(request: NextRequest) {
         });
       }
       await Faculty.bulkWrite(facultyBulkOps as never[], { session });
+    }
+
+    if (countIncrements.size) {
+      const countBulkOps = [];
+      for (const [empCode, incs] of countIncrements) {
+        countBulkOps.push({
+          updateOne: {
+            filter: { empId: empCode },
+            update: {
+              $inc: {
+                weekdaysCount: incs.weekdaysCount,
+                weekendCount: incs.weekendCount,
+                total: incs.total,
+              },
+              $set: {
+                updatedAt: new Date(),
+              },
+              $setOnInsert: {
+                empId: empCode,
+                createdAt: new Date(),
+              },
+            },
+            upsert: true,
+          },
+        });
+      }
+      await Count.bulkWrite(countBulkOps as never[], { session });
     }
 
     await session.commitTransaction();

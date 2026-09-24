@@ -144,12 +144,15 @@ interface PickOneOpts {
   simulatedRangesForPosition: string[] | null;
   lastAssignmentMap: Map<string, number>;
   lastWeekendMap: Map<string, number>;
+  weekendCountMap?: Map<string, number>;
+  weekdaysCountMap?: Map<string, number>;
+  totalCountMap?: Map<string, number>;
   preferWeekendFairness: boolean;
   alreadyAssignedThisMonth: Set<string>;
   allowDuplicateEntries?: boolean;
 }
 
-// --- Pick one faculty from pool (LRU + weekend fairness + filters) ---
+// --- Pick one faculty from pool (LRU + weekend fairness + counts + filters) ---
 const pickOne = (opts: PickOneOpts): FacultyDoc | null => {
   const {
     pool,
@@ -159,6 +162,9 @@ const pickOne = (opts: PickOneOpts): FacultyDoc | null => {
     simulatedRangesForPosition,
     lastAssignmentMap,
     lastWeekendMap,
+    weekendCountMap,
+    weekdaysCountMap,
+    totalCountMap,
     preferWeekendFairness,
     alreadyAssignedThisMonth = new Set(),
     allowDuplicateEntries = false,
@@ -177,13 +183,6 @@ const pickOne = (opts: PickOneOpts): FacultyDoc | null => {
     )
       return false;
 
-    if (weekend && preferWeekendFairness) {
-      const someoneNeverDidWeekend = pool.some(
-        (p) => !lastWeekendMap.get(String(p._id))
-      );
-      if (someoneNeverDidWeekend && lastWeekendMap.get(fid)) return false;
-    }
-
     return true;
   });
 
@@ -193,6 +192,23 @@ const pickOne = (opts: PickOneOpts): FacultyDoc | null => {
       (f) => !assignedThisMonth.has(String(f._id))
     );
   }
+  if (!eligible.length) return null;
+
+  if (weekend && preferWeekendFairness) {
+    // Weekend fairness with Count model + fallback to lastWeekendMap:
+    // If some eligible candidates have lower weekend count (e.g. 0), exclude higher weekend count candidates
+    const getWeekendCount = (f: FacultyDoc) => {
+      const fid = String(f._id);
+      if (weekendCountMap && weekendCountMap.has(fid)) {
+        return weekendCountMap.get(fid)!;
+      }
+      return lastWeekendMap.has(fid) ? 1 : 0;
+    };
+
+    const minWeekendCount = Math.min(...eligible.map(getWeekendCount));
+    eligible = eligible.filter((f) => getWeekendCount(f) <= minWeekendCount);
+  }
+
   if (!eligible.length) return null;
 
   const allEligibleAssigned =
@@ -209,14 +225,39 @@ const pickOne = (opts: PickOneOpts): FacultyDoc | null => {
       if (aAssigned !== bAssigned) return aAssigned ? 1 : -1;
     }
 
-    const aDate = lastAssignmentMap.get(aId) || 0;
-    const bDate = lastAssignmentMap.get(bId) || 0;
-    if (aDate !== bDate) return aDate - bDate;
+    const aWeekendCount =
+      weekendCountMap?.get(aId) ?? (lastWeekendMap.has(aId) ? 1 : 0);
+    const bWeekendCount =
+      weekendCountMap?.get(bId) ?? (lastWeekendMap.has(bId) ? 1 : 0);
+    const aWeekdayCount = weekdaysCountMap?.get(aId) ?? 0;
+    const bWeekdayCount = weekdaysCountMap?.get(bId) ?? 0;
+    const aTotalCount =
+      totalCountMap?.get(aId) ?? (aWeekendCount + aWeekdayCount);
+    const bTotalCount =
+      totalCountMap?.get(bId) ?? (bWeekendCount + bWeekdayCount);
 
     if (weekend && preferWeekendFairness) {
+      // 1. Lowest weekend count first
+      if (aWeekendCount !== bWeekendCount) return aWeekendCount - bWeekendCount;
+      // 2. Lowest total count (prioritize faculty not assigned in previous months)
+      if (aTotalCount !== bTotalCount) return aTotalCount - bTotalCount;
+      // 3. Oldest last weekend duty (LRU)
       const aWd = lastWeekendMap.get(aId) || 0;
       const bWd = lastWeekendMap.get(bId) || 0;
-      return aWd - bWd;
+      if (aWd !== bWd) return aWd - bWd;
+      // 4. Oldest last duty overall (LRU)
+      const aDate = lastAssignmentMap.get(aId) || 0;
+      const bDate = lastAssignmentMap.get(bId) || 0;
+      if (aDate !== bDate) return aDate - bDate;
+    } else {
+      // 1. Lowest total count (prioritize faculty not assigned in previous months)
+      if (aTotalCount !== bTotalCount) return aTotalCount - bTotalCount;
+      // 2. Lowest weekday count
+      if (aWeekdayCount !== bWeekdayCount) return aWeekdayCount - bWeekdayCount;
+      // 3. Oldest last duty overall (LRU)
+      const aDate = lastAssignmentMap.get(aId) || 0;
+      const bDate = lastAssignmentMap.get(bId) || 0;
+      if (aDate !== bDate) return aDate - bDate;
     }
 
     return 0;
@@ -232,6 +273,9 @@ export interface SelectFacultiesOpts {
   lastAssignmentMap: Map<string, number>;
   lastRoomRangeMap: Map<string, string>;
   lastWeekendMap: Map<string, number>;
+  weekendCountMap?: Map<string, number>;
+  weekdaysCountMap?: Map<string, number>;
+  totalCountMap?: Map<string, number>;
   groupHostels: { nextRoom: number; numberOfRooms: number; name: string }[];
   planningDays: number;
   alreadyAssignedToday: Set<string>;
@@ -252,6 +296,9 @@ export const selectFacultiesForGroup = (
     lastAssignmentMap,
     lastRoomRangeMap,
     lastWeekendMap,
+    weekendCountMap,
+    weekdaysCountMap,
+    totalCountMap,
     groupHostels,
     planningDays,
     alreadyAssignedToday,
@@ -273,6 +320,63 @@ export const selectFacultiesForGroup = (
     }
   };
 
+  const pickWithFallbackHelper = (
+    preferPool: FacultyDoc[],
+    fallbackPool: FacultyDoc[],
+    ranges: string[] | null
+  ) => {
+    let f = pickOne({
+      pool: preferPool,
+      date,
+      excludeIds,
+      lastRoomRanges: lastRoomRangeMap,
+      simulatedRangesForPosition: ranges,
+      lastAssignmentMap,
+      lastWeekendMap,
+      weekendCountMap,
+      weekdaysCountMap,
+      totalCountMap,
+      preferWeekendFairness: weekend,
+      alreadyAssignedThisMonth,
+      allowDuplicateEntries,
+    });
+    if (!f && fallbackPool.length && preferPool !== fallbackPool) {
+      f = pickOne({
+        pool: fallbackPool,
+        date,
+        excludeIds,
+        lastRoomRanges: lastRoomRangeMap,
+        simulatedRangesForPosition: ranges,
+        lastAssignmentMap,
+        lastWeekendMap,
+        weekendCountMap,
+        weekdaysCountMap,
+        totalCountMap,
+        preferWeekendFairness: weekend,
+        alreadyAssignedThisMonth,
+        allowDuplicateEntries,
+      });
+    }
+    if (!f && preferPool !== pools.all && fallbackPool !== pools.all) {
+      f = pickOne({
+        pool: pools.all,
+        date,
+        excludeIds,
+        lastRoomRanges: lastRoomRangeMap,
+        simulatedRangesForPosition: ranges,
+        lastAssignmentMap,
+        lastWeekendMap,
+        weekendCountMap,
+        weekdaysCountMap,
+        totalCountMap,
+        preferWeekendFairness: weekend,
+        alreadyAssignedThisMonth,
+        allowDuplicateEntries,
+      });
+    }
+    return f;
+  };
+
   if (n === 1) {
     const preferPool = weekend ? pools.nonTeaching : pools.teaching;
     const fallbackPool = weekend ? pools.teaching : pools.nonTeaching;
@@ -283,56 +387,16 @@ export const selectFacultiesForGroup = (
     );
     const allRanges = rangesForSingle[0] || [];
 
-    const pickWithFallback = (pool: FacultyDoc[]) => {
-      let f = pickOne({
-        pool,
-        date,
-        excludeIds,
-        lastRoomRanges: lastRoomRangeMap,
-        simulatedRangesForPosition: allRanges.length ? allRanges : null,
-        lastAssignmentMap,
-        lastWeekendMap,
-        preferWeekendFairness: weekend,
-        alreadyAssignedThisMonth,
-        allowDuplicateEntries,
-      });
-      if (!f && fallbackPool.length && pool !== fallbackPool) {
-        f = pickOne({
-          pool: fallbackPool,
-          date,
-          excludeIds,
-          lastRoomRanges: lastRoomRangeMap,
-          simulatedRangesForPosition: allRanges.length ? allRanges : null,
-          lastAssignmentMap,
-          lastWeekendMap,
-          preferWeekendFairness: weekend,
-          alreadyAssignedThisMonth,
-          allowDuplicateEntries,
-        });
-      }
-      if (!f && pool !== pools.all) {
-        f = pickOne({
-          pool: pools.all,
-          date,
-          excludeIds,
-          lastRoomRanges: lastRoomRangeMap,
-          simulatedRangesForPosition: allRanges.length ? allRanges : null,
-          lastAssignmentMap,
-          lastWeekendMap,
-          preferWeekendFairness: weekend,
-          alreadyAssignedThisMonth,
-          allowDuplicateEntries,
-        });
-      }
-      return f;
-    };
-
     const pool = preferPool.length
       ? preferPool
       : fallbackPool.length
         ? fallbackPool
         : pools.all;
-    const f = pickWithFallback(pool);
+    const f = pickWithFallbackHelper(
+      pool,
+      fallbackPool,
+      allRanges.length ? allRanges : null
+    );
     if (f) {
       addToExclude(f);
       selected.push(f);
@@ -348,55 +412,7 @@ export const selectFacultiesForGroup = (
       planningDays
     );
 
-    const pickWithFallback = (
-      preferPool: FacultyDoc[],
-      fallbackPool: FacultyDoc[],
-      ranges: string[]
-    ) => {
-      let f = pickOne({
-        pool: preferPool,
-        date,
-        excludeIds,
-        lastRoomRanges: lastRoomRangeMap,
-        simulatedRangesForPosition: ranges,
-        lastAssignmentMap,
-        lastWeekendMap,
-        preferWeekendFairness: weekend,
-        alreadyAssignedThisMonth,
-        allowDuplicateEntries,
-      });
-      if (!f && fallbackPool.length) {
-        f = pickOne({
-          pool: fallbackPool,
-          date,
-          excludeIds,
-          lastRoomRanges: lastRoomRangeMap,
-          simulatedRangesForPosition: ranges,
-          lastAssignmentMap,
-          lastWeekendMap,
-          preferWeekendFairness: weekend,
-          alreadyAssignedThisMonth,
-          allowDuplicateEntries,
-        });
-      }
-      if (!f) {
-        f = pickOne({
-          pool: pools.all,
-          date,
-          excludeIds,
-          lastRoomRanges: lastRoomRangeMap,
-          simulatedRangesForPosition: ranges,
-          lastAssignmentMap,
-          lastWeekendMap,
-          preferWeekendFairness: weekend,
-          alreadyAssignedThisMonth,
-          allowDuplicateEntries,
-        });
-      }
-      return f;
-    };
-
-    const t = pickWithFallback(
+    const t = pickWithFallbackHelper(
       pools.teaching,
       pools.nonTeaching,
       rangesPerIndex[0]
@@ -404,7 +420,7 @@ export const selectFacultiesForGroup = (
     addToExclude(t);
     if (t) selected.push(t);
 
-    const nt = pickWithFallback(
+    const nt = pickWithFallbackHelper(
       pools.nonTeaching,
       pools.teaching,
       rangesPerIndex[1]
@@ -431,55 +447,7 @@ export const selectFacultiesForGroup = (
       planningDays
     );
 
-    const pickWithFallback = (
-      preferPool: FacultyDoc[],
-      fallbackPool: FacultyDoc[],
-      ranges: string[]
-    ) => {
-      let f = pickOne({
-        pool: preferPool,
-        date,
-        excludeIds,
-        lastRoomRanges: lastRoomRangeMap,
-        simulatedRangesForPosition: ranges,
-        lastAssignmentMap,
-        lastWeekendMap,
-        preferWeekendFairness: weekend,
-        alreadyAssignedThisMonth,
-        allowDuplicateEntries,
-      });
-      if (!f && fallbackPool.length) {
-        f = pickOne({
-          pool: fallbackPool,
-          date,
-          excludeIds,
-          lastRoomRanges: lastRoomRangeMap,
-          simulatedRangesForPosition: ranges,
-          lastAssignmentMap,
-          lastWeekendMap,
-          preferWeekendFairness: weekend,
-          alreadyAssignedThisMonth,
-          allowDuplicateEntries,
-        });
-      }
-      if (!f) {
-        f = pickOne({
-          pool: pools.all,
-          date,
-          excludeIds,
-          lastRoomRanges: lastRoomRangeMap,
-          simulatedRangesForPosition: ranges,
-          lastAssignmentMap,
-          lastWeekendMap,
-          preferWeekendFairness: weekend,
-          alreadyAssignedThisMonth,
-          allowDuplicateEntries,
-        });
-      }
-      return f;
-    };
-
-    const t1 = pickWithFallback(
+    const t1 = pickWithFallbackHelper(
       pools.teaching,
       pools.nonTeaching,
       ranges1[0]
@@ -487,7 +455,7 @@ export const selectFacultiesForGroup = (
     addToExclude(t1);
     if (t1) selected.push(t1);
 
-    const nt1 = pickWithFallback(
+    const nt1 = pickWithFallbackHelper(
       pools.nonTeaching,
       pools.teaching,
       ranges1[1]
@@ -495,7 +463,7 @@ export const selectFacultiesForGroup = (
     addToExclude(nt1);
     if (nt1) selected.push(nt1);
 
-    const t2 = pickWithFallback(
+    const t2 = pickWithFallbackHelper(
       pools.teaching,
       pools.nonTeaching,
       ranges2[0]
@@ -503,7 +471,7 @@ export const selectFacultiesForGroup = (
     addToExclude(t2);
     if (t2) selected.push(t2);
 
-    const nt2 = pickWithFallback(
+    const nt2 = pickWithFallbackHelper(
       pools.nonTeaching,
       pools.teaching,
       ranges2[1]
@@ -670,4 +638,69 @@ export const mergeFacultyLastDutyIntoMaps = (
         lastWeekendMap.set(fid, d);
     }
   }
+};
+
+export interface FacultyCountDoc {
+  empId: string;
+  weekendCount?: number;
+  weekdaysCount?: number;
+  total?: number;
+}
+
+/**
+ * Load duty counts per faculty from the Count collection.
+ * Returns { weekendCountMap, weekdaysCountMap, totalCountMap } keyed by faculty _id string.
+ */
+export const loadFacultyCountData = async (
+  facultyList: (FacultyRef | Types.ObjectId)[],
+  CountModel: mongoose.Model<any>
+) => {
+  const weekendCountMap = new Map<string, number>();
+  const weekdaysCountMap = new Map<string, number>();
+  const totalCountMap = new Map<string, number>();
+
+  if (!facultyList.length)
+    return { weekendCountMap, weekdaysCountMap, totalCountMap };
+
+  const codeToFid = new Map<string, string>();
+  const employeeCodes: string[] = [];
+
+  for (const item of facultyList) {
+    if (item && typeof item === "object" && "_id" in item) {
+      const f = item as FacultyRef;
+      const fid = String(f._id);
+      if (f.employeeCode) {
+        const code = String(f.employeeCode).trim();
+        codeToFid.set(code, fid);
+        employeeCodes.push(code);
+      }
+    }
+  }
+
+  if (!employeeCodes.length) {
+    return { weekendCountMap, weekdaysCountMap, totalCountMap };
+  }
+
+  const rawDocs = await CountModel.find({
+    empId: { $in: employeeCodes },
+  }).lean();
+
+  const countDocs = rawDocs as unknown as FacultyCountDoc[];
+
+  for (const doc of countDocs) {
+    const code = String(doc.empId ?? "").trim();
+    const fid = codeToFid.get(code);
+    if (fid) {
+      const wEnd = typeof doc.weekendCount === "number" ? doc.weekendCount : 0;
+      const wDay = typeof doc.weekdaysCount === "number" ? doc.weekdaysCount : 0;
+      const tot =
+        typeof doc.total === "number" ? doc.total : wEnd + wDay;
+
+      weekendCountMap.set(fid, wEnd);
+      weekdaysCountMap.set(fid, wDay);
+      totalCountMap.set(fid, tot);
+    }
+  }
+
+  return { weekendCountMap, weekdaysCountMap, totalCountMap };
 };
