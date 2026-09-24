@@ -3,6 +3,8 @@ import connectDB from "@/lib/db";
 import Group from "@/lib/models/Group";
 import Hostel from "@/lib/models/Hostel";
 
+const ALLOWED_FACULTY_PER_DAY = [1, 2, 4];
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -71,6 +73,17 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
+      const facultyPerDay = Number(numberOfFacutlyPerDay);
+      if (!ALLOWED_FACULTY_PER_DAY.includes(facultyPerDay)) {
+        responseGroups.push({
+          name,
+          error: `Invalid numberOfFacutlyPerDay: must be one of ${ALLOWED_FACULTY_PER_DAY.join(
+            ", "
+          )}.`,
+        });
+        continue;
+      }
+
       let finalHostelNames: string[];
       if (replaceHostels || !eg) {
         finalHostelNames = hostelName;
@@ -83,7 +96,7 @@ export async function POST(request: NextRequest) {
       const updateFields: Record<string, unknown> = {
         name,
         hostelName: finalHostelNames,
-        numberOfFacutlyPerDay,
+        numberOfFacutlyPerDay: facultyPerDay,
         type,
       };
       if (school !== undefined) updateFields.school = school;

@@ -483,16 +483,16 @@ export default function SettingPage() {
               </div>
               <div className="form-group">
                 <label>Faculty per Day</label>
-                <input
-                  type="number"
+                <select
                   name="numberOfFacutlyPerDay"
                   value={groupForm.numberOfFacutlyPerDay}
                   onChange={handleGroupChange}
-                  onWheel={preventScroll}
-                  min={1}
-                  max={4}
                   className="custom-select"
-                />
+                >
+                  <option value={1}>1</option>
+                  <option value={2}>2</option>
+                  <option value={4}>4</option>
+                </select>
               </div>
               <div className="form-group">
                 <label>School</label>
