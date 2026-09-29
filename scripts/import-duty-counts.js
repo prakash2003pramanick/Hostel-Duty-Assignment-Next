@@ -40,7 +40,7 @@ function getArgumentValue(argName, defaultValue) {
 
 const customFilePath = getArgumentValue(
   "--file",
-  "./Female duty Count Summary Sept.xlsx"
+  "data/Female duty Count Summary Sept.xlsx"
 );
 const excelFilePath = path.resolve(process.cwd(), customFilePath);
 
