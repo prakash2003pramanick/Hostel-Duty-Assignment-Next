@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import connectDB from "@/lib/db";
 import Faculty from "@/lib/models/Faculty";
+import Count from "@/lib/models/Count";
 
 const cleanHeader = (key: string) =>
   (key || "")
@@ -199,6 +200,25 @@ export async function POST(request: NextRequest) {
 
     if (bulkOperations.length > 0) {
       await Faculty.bulkWrite(bulkOperations as never[]);
+    }
+
+    const countBaselineOps = uniqueFaculty.map((doc) => ({
+      updateOne: {
+        filter: { empId: doc.employeeCode },
+        update: {
+          $setOnInsert: {
+            empId: doc.employeeCode,
+            weekdaysCount: 0,
+            weekendCount: 0,
+            total: 0,
+          },
+        },
+        upsert: true,
+      },
+    }));
+
+    if (countBaselineOps.length > 0) {
+      await Count.bulkWrite(countBaselineOps as never[]);
     }
 
     const newSheet = XLSX.utils.json_to_sheet(allStatus);

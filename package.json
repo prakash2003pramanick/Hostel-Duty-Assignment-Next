@@ -11,7 +11,9 @@
     "start": "next start",
     "lint": "next lint",
     "import-counts": "node --env-file=.env.local scripts/import-duty-counts.js",
-    "backup-db": "node --env-file=.env.local scripts/backup-db.js"
+    "backup-db": "node --env-file=.env.local scripts/backup-db.js",
+    "find-missing-duty": "node --env-file=.env.local scripts/find-faculty-without-duty.js",
+    "swap-oct-faculty": "node --env-file=.env.local scripts/swap-oct-faculty.js"
   },
   "dependencies": {
     "date-fns": "^4.4.0",
